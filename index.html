@@ -1,0 +1,272 @@
+<!doctype html>
+<html class="no-js" lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bus arrivals app</title>
+    <link rel="stylesheet" href="css/foundation.css" />
+    <script src="js/vendor/modernizr.js"></script>
+	<style>
+	body {
+		font-family:calibri;
+		font-size:12px;
+		width:auto;
+		max-width:100%
+	}
+
+	#busListing {
+		display:block
+	}
+
+	ul {
+		list-style-type:none;
+		padding:0;
+		margin:0;
+		cursor:auto
+	}
+
+	li {
+		background-image:url(img/bus.png);
+		background-repeat:no-repeat;
+		background-position:0 .4em;
+		padding:5px 0 5px 30px;
+		margin:.4em 0
+	}
+
+	.time {
+		margin-right:1em
+	}
+
+	#main {
+		height:95%
+	}
+
+	#listing-panel,#map {
+		min-height:70%;
+		max-height:70%;
+		border:1px solid blue;
+		overflow:scroll
+	}
+
+	#stopListing div.arrivals {
+		background-color:#add8e6;
+		font-size:.8em;
+		padding-left:1.2em;
+		position:relative
+	}
+
+	#stopListing div.arrivals h3 {
+		font-size:1.2em
+	}
+
+	.locate {
+		position:absolute;
+		bottom:0;
+		right:0
+	}
+
+	#map-canvas {
+		height:70%
+	}
+	
+	</style>
+	
+  </head>
+  <body>
+    
+    <div class="row">
+      <div class="large-12 columns">
+        <h1>Bus Arrivals App</h1>
+      </div>
+    </div>
+    
+    <div class="row">
+      <div class="large-12 columns">
+      	<div class="panel">
+	       
+	        <p>This app uses your browsers location sharing feature. Please make sure it is switched on in the settings of your browser.</p>
+	        
+	
+      	</div>
+      </div>
+    </div>
+
+    <div id='main' class="row">
+	  <div id='listing-panel' class="large-5 medium-5 columns">
+		<div id="busListing"></div>
+		<h6>Tap on Bus Stop to get arrival times</h6>
+		<ul id="stopListing"></ul>
+      </div>	
+      <div id='map-canvas' class="large-7 medium-7 columns">
+      
+        <!-- Map goes here -->
+      </div>     
+    </div>
+    
+    <script src="js/vendor/jquery.js"></script>
+    <script src="js/foundation.min.js"></script>
+    <script>
+      $(document).foundation();
+    </script>
+	<script src="https://maps.googleapis.com/maps/api/js?v=3.exp"></script>
+
+	<script language="javascript" type="text/javascript">
+	
+
+	 function Bus() {
+		 // constructor - Add initialisation code here. Can create google map object here
+		 var map;
+	 };
+     
+     // Methods for Bus object	 
+	 Bus.prototype = {
+		getStopListingForLocation: function(lat, lng) {  // Get all listing for Geo location of browser
+			// Prepare Longitude and latitude values for TFL Api
+			 var swLat, swLng, neLat, neLng;
+			 swLat = lat - 0.01;
+			 swLng = lng - 0.01;
+			 neLat = lat + 0.01;
+			 neLng = lng + 0.01;
+
+			 that = this;
+			
+			//Construct url for TFL Api
+			 var endpoint = 'url=http://countdown.tfl.gov.uk/markers/swLat/' + swLat + '/swLng/' + swLng + '/neLat/' + neLat + '/neLng/' + neLng + '/';
+
+			 $.ajax({
+				 type: 'POST',
+				 url: 'http://localhost:90/businfo.php',
+				 data: endpoint,
+				 success: function(data) {
+					 that.displayStopListing(data);
+					 console.log(data);
+				 }
+			 });
+
+
+		},
+		displayStopListing: function(stopListingData) {
+			 var data = $.parseJSON(stopListingData);
+			 that = this;
+			 $.each(data.markers, function(i, item) {
+				 $("<li/>")
+					 .text(item.name + ' (stop ' + item.stopIndicator + ') to ' + item.towards)
+					 .attr("onclick", "that.getBusListingForStop(" + item.id + ")")
+					 .attr("class", "stopListing")
+					 .attr("id", item.id)
+					 .appendTo("#stopListing");
+					$("<div/>").attr("class", "arrivals")
+					 .appendTo('li#'+item.id);
+			 });
+		 },
+		getBusListingForStop: function(stopId) { // Get arrival listing of buses plus arrival times
+			 var endpoint = 'url=http://countdown.tfl.gov.uk/stopBoard/' + stopId + '/';
+			 that = this;
+			 $("#" + stopId).attr("onclick", "");
+
+			 $.ajax({
+				 type: 'POST',
+				 url: 'http://localhost:90/businfo.php',
+				 data: endpoint,
+
+				 success: function(data) {
+					 that.displayBusListing(data, stopId);
+				 }
+			 });
+		},
+
+		displayBusListing: function(busListingData, stopId) {
+			 var data = $.parseJSON(busListingData);
+			 $("<h3 />").text("Buses Due").appendTo("li#" + stopId+" div");
+			 $("<a href='#' class='locate'>Locate on map</a>").appendTo("li#" + stopId+" div");
+			 $.each(data.arrivals, function(i, item) {
+				 $("<span/>")
+					 .text(item.estimatedWait)
+					 .attr("class", "busListing time")
+					 .appendTo("li#" + stopId+" div");
+
+				 $("<span/>")
+					 .text(item.routeName + ' to ' + item.destination)
+					 .attr("class", "busListing info")
+					 .appendTo("li#" + stopId+" div");
+
+				 $("<br/>")
+					 .appendTo("li#" + stopId+" div");
+					 
+			 });
+		},
+		
+		mapInitialise:	function (position) {
+		  var mapOptions = {
+			zoom: 16
+		  };
+		  map = new google.maps.Map(document.getElementById('map-canvas'),
+			  mapOptions);
+
+		  // Try HTML5 geolocation
+		 
+			
+			  var pos = new google.maps.LatLng(position.coords.latitude,
+											   position.coords.longitude);
+
+			  var infowindow = new google.maps.InfoWindow({
+				map: map,
+				position: pos,
+				content: 'Your Location found'
+			  });
+
+			  map.setCenter(pos);
+		
+		   
+		},
+		
+		handleNoGeolocation: function (errorFlag) {
+		  if (errorFlag) {
+			var content = 'Error: The Geolocation service failed.';
+		  } else {
+			var content = 'Error: Your browser doesn\'t support geolocation.';
+		  }
+
+		  var options = {
+			map: map,
+			position: new google.maps.LatLng(60, 105),
+			content: content
+		  };
+
+		  var infowindow = new google.maps.InfoWindow(options);
+		  map.setCenter(options.position);
+		}
+		
+		
+
+	};
+
+	var businfo = new Bus();
+
+
+	$(function() {
+		 // get latitude longitude
+
+
+		$("#stopListing").on('click', 'li.stopListing', function() { 
+			$( this).find('div').toggle();
+		});
+
+	   
+		if (navigator.geolocation) {
+			 navigator.geolocation.getCurrentPosition(function(position) {
+				businfo.getStopListingForLocation(position.coords.latitude, position.coords.longitude); // Display nearest bus stops
+				businfo.mapInitialise(position); // Create map
+
+
+			 });
+		} else {
+			 alert('could not get your location');
+		}
+	});
+
+	</script>
+	
+	
+  </body>
+</html>
